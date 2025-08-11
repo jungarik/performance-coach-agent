@@ -1,61 +1,39 @@
 import { google } from 'googleapis';
-import { logger } from '../utils/logger.js';
-import fs from 'node:fs';
 
-let sheetsClient;
+function getServiceAccount() {
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is missing');
+  const sa = JSON.parse(raw);
 
-function getCredentials() {
-  const path = process.env.GOOGLE_SERVICE_ACCOUNT_PATH;
-  const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  if (path && fs.existsSync(path)) {
-    return JSON.parse(fs.readFileSync(path, 'utf8'));
+  // Handle both multiline keys and \n-escaped keys
+  if (typeof sa.private_key === 'string') {
+    sa.private_key = sa.private_key.includes('\\n')
+      ? sa.private_key.replace(/\\n/g, '\n')
+      : sa.private_key;
   }
-  if (json) {
-    try { return JSON.parse(json); } catch (e) {
-      logger.error('Failed to parse GOOGLE_SERVICE_ACCOUNT_JSON');
-      throw e;
-    }
-  }
-  throw new Error('Google service account credentials not provided. Set GOOGLE_SERVICE_ACCOUNT_PATH or GOOGLE_SERVICE_ACCOUNT_JSON');
+  return sa;
 }
 
-function ensureClient() {
-  if (sheetsClient) return sheetsClient;
-  const creds = getCredentials();
-  const jwt = new google.auth.JWT(
-    creds.client_email,
-    undefined,
-    creds.private_key,
-    ['https://www.googleapis.com/auth/spreadsheets']
-  );
-  sheetsClient = google.sheets({ version: 'v4', auth: jwt });
-  return sheetsClient;
+export function getSheetsClient() {
+  const sa = getServiceAccount();
+  const auth = new google.auth.JWT({
+    email: sa.client_email,
+    key: sa.private_key,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+  return google.sheets({ version: 'v4', auth });
 }
 
-export async function appendJournalRow(row) {
-  const sheets = ensureClient();
+// Example: append a row
+export async function appendJournalRow({ chat_id, section, q1 = '', q2 = '', q3 = '' }) {
+  const sheets = getSheetsClient();
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
-  if (!spreadsheetId) throw new Error('GOOGLE_SHEET_ID not set');
-
-  const values = [[
-    new Date().toISOString(),
-    row.date || new Date().toISOString().slice(0,10),
-    row.chat_id,
-    row.section,
-    row.q1 ?? '',
-    row.q2 ?? '',
-    row.q3 ?? '',
-    row.mood ?? '',
-    row.energy ?? '',
-    row.notes ?? ''
-  ]];
-
+  const range = 'Journal!A:Z'; // adjust to your sheet/tab
+  const values = [[new Date().toISOString(), String(chat_id), section, q1, q2, q3]];
   await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: 'Journal!A:J',
+    range,
     valueInputOption: 'USER_ENTERED',
-    insertDataOption: 'INSERT_ROWS',
-    requestBody: { values }
+    requestBody: { values },
   });
-  logger.info('Appended row to Sheets', row.section);
 }
