@@ -2,6 +2,7 @@
 import { logger } from '../utils/logger.js';
 
 let OpenAIClient = null;
+
 try {
   const mod = await import('openai');
   OpenAIClient = mod.default;
