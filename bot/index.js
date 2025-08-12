@@ -14,6 +14,7 @@ import { registerSchedules } from './scheduler.js';
 // your existing imports: handlers, googleSheets, etc.
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
+
 bot.use(session({
   defaultSession: () => ({ mode: 'wizard' })
 }));
@@ -76,21 +77,16 @@ bot.command('review', async (ctx) => {
 bot.on('text', async (ctx) => {
   const mode = ctx.session.mode || 'wizard';
   if (mode === 'wizard') {
-    // your existing scripted flows, e.g., morning/midday/evening
+    const flow = ctx.session?.flow;
+    if (!flow) return handleFallback(ctx);
+    if (flow.name === 'morning') return continueMorning(ctx);
+    if (flow.name === 'midday') return continueMidday(ctx);
+    if (flow.name === 'evening') return continueEvening(ctx);
     return ctx.reply('Use /mode coach to switch to adaptive coaching.');
   }
   // pull active weekly goal (if any)
   const g = q.get(`SELECT text FROM goals WHERE chat_id=? AND status='active' ORDER BY id DESC LIMIT 1`, String(ctx.chat.id));
   await nextCoachMove(ctx, { goal: g?.text || null });
-});
-
-bot.on('text', async (ctx) => {
-  const flow = ctx.session?.flow;
-  if (!flow) return handleFallback(ctx);
-  if (flow.name === 'morning') return continueMorning(ctx);
-  if (flow.name === 'midday') return continueMidday(ctx);
-  if (flow.name === 'evening') return continueEvening(ctx);
-  return handleFallback(ctx);
 });
 
 // --- Reminder dispatcher (runs every minute) ---

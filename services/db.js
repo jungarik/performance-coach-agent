@@ -2,11 +2,16 @@
 import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
+import { logger } from '../utils/logger.js';
 
 const DATA_DIR = process.env.DB_DIR || './data';
 const DB_PATH  = process.env.DATABASE_PATH || path.join(DATA_DIR, 'coach.db');
 
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(DATA_DIR)) {
+  const dir = fs.mkdirSync(DATA_DIR, { recursive: true });
+  logger.info(`Folder created: ${dir}`)
+}
+  
 
 export const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
