@@ -112,5 +112,5 @@ const stop = registerSchedules(bot, getSubscribers);
 
 bot.launch().then(() => logger.info('Bot launched')).catch((e) => logger.error(e));
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+process.once('SIGINT', () => { stop?.(); bot.stop('SIGINT'); });
+process.once('SIGTERM', () => { stop?.(); bot.stop('SIGTERM'); });
