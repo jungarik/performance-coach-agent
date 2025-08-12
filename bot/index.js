@@ -5,15 +5,35 @@ import { ensureTacticsSeeded } from '../services/policy/init.js';
 import { q } from '../services/db.js';
 import { nextCoachMove, reflectAndLearn } from '../services/coachBrain.js';
 import { weeklySelfReview } from '../services/selfReview.js';
+import { logger } from '../utils/logger.js';
+import { handleMorning, continueMorning } from './handlers/morningCheckin.js';
+import { handleMidday, continueMidday } from './handlers/middayCheckin.js';
+import { handleEvening, continueEvening } from './handlers/eveningCheckin.js';
+import { handleFallback } from './handlers/fallback.js';
+import { registerSchedules } from './scheduler.js';
 // your existing imports: handlers, googleSheets, etc.
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
-bot.use(session());
+bot.use(session({
+  defaultSession: () => ({ mode: 'wizard' })
+}));
+
+// Simple in-memory registry of chat IDs (replace with DB later)
+const subscribers = new Set();
+const getSubscribers = async () => Array.from(subscribers);
+
+bot.start(async (ctx) => {
+  subscribers.add(ctx.chat.id);
+  await ctx.reply('Hey! I am your Performance Coach Bot. Try /morning, /midday, or /evening. I will also nudge you daily.');
+});
 
 // Seed tactics at boot
 ensureTacticsSeeded();
 
 // --- Commands ---
+bot.command('morning', handleMorning);
+bot.command('midday', handleMidday);
+bot.command('evening', handleEvening);
 bot.command('mode', async (ctx) => {
   const modes = ['coach','planner','analyst','accountability','wizard'];
   const choice = (ctx.message.text.split(' ')[1] || '').toLowerCase();
@@ -64,6 +84,15 @@ bot.on('text', async (ctx) => {
   await nextCoachMove(ctx, { goal: g?.text || null });
 });
 
+bot.on('text', async (ctx) => {
+  const flow = ctx.session?.flow;
+  if (!flow) return handleFallback(ctx);
+  if (flow.name === 'morning') return continueMorning(ctx);
+  if (flow.name === 'midday') return continueMidday(ctx);
+  if (flow.name === 'evening') return continueEvening(ctx);
+  return handleFallback(ctx);
+});
+
 // --- Reminder dispatcher (runs every minute) ---
 cron.schedule('* * * * *', async () => {
   const now = new Date().toISOString();
@@ -78,6 +107,10 @@ cron.schedule('* * * * *', async () => {
   }
 });
 
-bot.launch();
+// Register daily schedules
+const stop = registerSchedules(bot, getSubscribers);
+
+bot.launch().then(() => logger.info('Bot launched')).catch((e) => logger.error(e));
+
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
